@@ -10,7 +10,7 @@ import datetime
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app, origins=["https://tariffimpact.netlify.app", "https://tariffimpact.netlify.app/", "http://localhost:3000"]) # Enable CORS for all routes
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True) # Enable CORS for all routes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
