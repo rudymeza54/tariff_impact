@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tariff Impact Analysis Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <meta name="description" content="Interactive dashboard visualizing tariff impacts on agriculture and lumber markets">
+</head>
+<body>
+    <header>
+        <h1>Tariff Impact Analysis Dashboard</h1>
+        <p>Interactive visualization of how tariffs affect agriculture and lumber markets</p>
+    </header>
+
+    <div class="dashboard-container">
+        <div class="sidebar">
+            <div class="control-panel">
+                <h2>Controls</h2>
+                <div class="control-group">
+                    <label for="event-selector">Tariff Event:</label>
+                    <select id="event-selector">
+                        <option value="10">March 5, 2025: New 25% Tariff on Canadian Lumber</option>
+                        <!-- More events will be populated dynamically -->
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="sector-selector">Sector:</label>
+                    <select id="sector-selector">
+                        <option value="all">All Sectors</option>
+                        <option value="Lumber_Companies">Lumber Companies</option>
+                        <option value="Lumber_ETFs">Lumber ETFs</option>
+                        <option value="Agriculture_Companies">Agriculture Companies</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="time-window">Time Window:</label>
+                    <select id="time-window">
+                        <option value="10">±10 Days</option>
+                        <option value="20">±20 Days</option>
+                        <option value="30">±30 Days</option>
+                    </select>
+                </div>
+                
+                <button id="update-button">Update Dashboard</button>
+            </div>
+            
+            <div class="event-details">
+                <h2>Event Information</h2>
+                <div id="event-info">
+                    <h3>New 25% Tariff on Canadian Lumber</h3>
+                    <p class="event-date"><strong>Date:</strong> March 5, 2025</p>
+                    <p><strong>Affected Sectors:</strong> Lumber</p>
+                    <p><strong>Description:</strong> The Trump administration imposed a 25% tariff on Canadian lumber imports to protect domestic producers, significantly impacting construction costs and lumber market dynamics.</p>
+                </div>
+            </div>
+            
+            <div class="impact-summary">
+                <h2>Impact Summary</h2>
+                <div id="impact-metrics">
+                    <div class="metric-box" id="overall-effect">
+                        <h3>Overall Effect</h3>
+                        <p class="metric-value">Loading...</p>
+                        <p class="metric-desc">Avg. sector impact</p>
+                    </div>
+                    <div class="metric-box" id="most-affected">
+                        <h3>Most Affected</h3>
+                        <p class="metric-value">Loading...</p>
+                    </div>
+                    <div class="metric-box" id="least-affected">
+                        <h3>Least Affected</h3>
+                        <p class="metric-value">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="main-content">
+            <!-- Primary chart - largest and most important visualization -->
+            <div class="chart-container" id="price-chart-container">
+                <h2>Price Trends</h2>
+                <div class="chart-controls"></div>
+                <div id="price-chart" class="chart"></div>
+            </div>
+            
+            <!-- Two-column layout for secondary charts -->
+            <div class="chart-row">
+                <div class="chart-container" id="impact-chart-container">
+                    <h2>Differential Impact</h2>
+                    <div id="impact-chart" class="chart"></div>
+                </div>
+                
+                <div class="chart-container" id="volume-chart-container">
+                    <h2>Trading Volume</h2>
+                    <div id="volume-chart" class="chart"></div>
+                </div>
+            </div>
+            
+            <!-- Full-width heat map at the bottom -->
+            <div class="chart-container" id="heatmap-container">
+                <h2>Sector Heatmap</h2>
+                <div id="impact-heatmap" class="chart"></div>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <p>Data sources: Market data collected from financial APIs and tariff information from public announcements.</p>
+        <p>© 2025 Tariff Impact Analysis Project</p>
+    </footer>
+    
+    <!-- Load D3.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- API-connected dashboard implementation -->
+    <script>
+    // Define API base URL
+    const API_BASE_URL = 'http://localhost:5000/api';
+    
+    // Set the fixed tariff date
+    const TARIFF_DATE = '2025-03-05';
+    
+    // Data cache for storing API responses
+    let dataCache = {};
+    
+    // Current state
+    let currentState = {
+        eventId: '10',
+        sector: 'all',
+        timeWindow: 10,
+        tariffDate: TARIFF_DATE
+    };
+    
+    // Initialize dashboard
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("Dashboard initializing...");
+        
+        // Set up event handlers
+        setupEventHandlers();
+        
+        // Load initial data
+        updateEventInfo(); // Call this first to update the event information
+        updateImpactMetrics();
+        refreshData();
+    });
+    
+    // Set up event handlers
+    function setupEventHandlers() {
+        const updateButton = document.getElementById('update-button');
+        if (updateButton) {
+            updateButton.addEventListener('click', function() {
+                // Update current state
+                const eventSelector = document.getElementById('event-selector');
+                const sectorSelector = document.getElementById('sector-selector');
+                const timeWindowSelector = document.getElementById('time-window');
+                
+                if (eventSelector) currentState.eventId = eventSelector.value;
+                if (sectorSelector) currentState.sector = sectorSelector.value;
+                if (timeWindowSelector) currentState.timeWindow = parseInt(timeWindowSelector.value);
+                
+                console.log("Updating with state:", currentState);
+                
+                // Update metrics and charts
+                updateEventInfo(); // Add this to update event info on button click
+                updateImpactMetrics();
+                refreshData();
+            });
+        }
+        
+        // Add event listener for event selector
+        const eventSelector = document.getElementById('event-selector');
+        if (eventSelector) {
+            eventSelector.addEventListener('change', function() {
+                currentState.eventId = this.value;
+                updateEventInfo(); // Add this to update event info when event changes
+                updateImpactMetrics();
+            });
+        }
+        
+        // Add window resize handler
+        window.addEventListener('resize', function() {
+            // Debounce resize events
+            clearTimeout(window.resizeTimer);
+            window.resizeTimer = setTimeout(function() {
+                console.log("Window resized, updating charts");
+                createPriceChart();
+                createImpactChart();
+                updateEventInfo();
+                createVolumeChart();
+                createHeatmap();
+            }, 250);
+        });
+    }
+    // Function to refresh all data
+    function refreshData() {
+        showLoading();
+        
+        // Update event information first
+        updateEventInfo();
+        
+        Promise.all([
+            fetchPriceData(),
+            fetchImpactData(),
+            fetchVolumeData(),
+            fetchHeatmapData()
+        ])
+        .then(([priceData, impactData, volumeData, heatmapData]) => {
+            // Cache the data
+            dataCache = {
+                priceData: priceData,
+                impactData: impactData,
+                volumeData: volumeData,
+                heatmapData: heatmapData
+            };
+            
+            console.log("Data refreshed successfully");
+            hideLoading();
+            
+            // Create charts
+            createPriceChart();
+            createImpactChart();
+            createVolumeChart();
+            createHeatmap();
+        })
+        .catch(error => {
+            console.error("Error refreshing data:", error);
+            hideLoading();
+            showError("Failed to load data from API. Check console for details.");
+            
+            // Use fallback data if available or create new dummy data
+            // useFallbackData();
+        });
+    }
+    
+    // API data fetching functions
+    function fetchPriceData() {
+        const url = `${API_BASE_URL}/price-data?event_id=${currentState.eventId}&sector=${currentState.sector}&days=${currentState.timeWindow}`;
+        console.log("Fetching price data from:", url);
+        
+        return fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Price data API returned ${response.status}`);
+                }
+                return response.json();
+            })
+            .catch(error => {
+                console.error("Error fetching price data:", error);
+                throw error;
+            });
+    }
+    
+    function fetchImpactData() {
+        const url = `${API_BASE_URL}/impact-data?event_id=${currentState.eventId}&sector=${currentState.sector}`;
+        console.log("Fetching impact data from:", url);
+        
+        return fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Impact data API returned ${response.status}`);
+                }
+                return response.json();
+            })
+            .catch(error => {
+                console.error("Error fetching impact data:", error);
+                throw error;
+            });
+    }
+    
+    function fetchVolumeData() {
+        const url = `${API_BASE_URL}/volume-data?event_id=${currentState.eventId}&sector=${currentState.sector}&days=${currentState.timeWindow}`;
+        console.log("Fetching volume data from:", url);
+        
+        return fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Volume data API returned ${response.status}`);
+                }
+                return response.json();
+            })
+            .catch(error => {
+                console.error("Error fetching volume data:", error);
+                throw error;
+            });
+    }
+    
+    function fetchHeatmapData() {
+        const url = `${API_BASE_URL}/heatmap-data?event_id=${currentState.eventId}&sector=${currentState.sector}`;
+        console.log("Fetching heatmap data from:", url);
+        
+        return fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Heatmap data API returned ${response.status}`);
+                }
+                return response.json();
+            })
+            .catch(error => {
+                console.error("Error fetching heatmap data:", error);
+                throw error;
+            });
+    }
+    
+    // Complete updateEventInfo function that fetches from API
+    function updateEventInfo() {
+        console.log("Updating event information with current date");
+        
+        // Fetch the latest event info from API
+        fetch(`${API_BASE_URL}/latest-tariff-event`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Event info API returned ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Received event data:", data);
+                
+                // Format date properly, maintaining GMT timezone
+                const eventDate = new Date(data.date);
+                const formattedDate = eventDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    timeZone: 'GMT' // This ensures the date matches the GMT date from the API
+                });
+                
+                // Update the event info in the UI
+                const eventDateElement = document.querySelector('#event-info .event-date');
+                if (eventDateElement) {
+                    eventDateElement.innerHTML = `<strong>Date:</strong> ${formattedDate}`;
+                }
+                
+                // Update the event title
+                const eventTitleElement = document.querySelector('#event-info h3');
+                if (eventTitleElement) {
+                    eventTitleElement.textContent = data.title || "New 25% Tariff on Canadian Lumber (March 13 Update)";
+                }
+                
+                // Update description if available
+                if (data.description) {
+                    const descriptionElements = document.querySelectorAll('#event-info p');
+                    let descriptionElement = null;
+                    
+                    // Find the description element (not date, not sectors)
+                    for (const element of descriptionElements) {
+                        if (!element.classList.contains('event-date') && 
+                            !element.textContent.includes('Affected Sectors:')) {
+                            descriptionElement = element;
+                            break;
+                        }
+                    }
+                    
+                    // If no description element found, create one
+                    if (!descriptionElement) {
+                        descriptionElement = document.createElement('p');
+                        document.querySelector('#event-info').appendChild(descriptionElement);
+                    }
+                    
+                    descriptionElement.innerHTML = `<strong>Description:</strong> ${data.description}`;
+                }
+                
+                // Update affected sectors if available
+                if (data.affected_sectors) {
+                    let sectorsElement = document.querySelector('#event-info p:not(.event-date)');
+                    
+                    // Find the sectors element specifically
+                    const allParagraphs = document.querySelectorAll('#event-info p');
+                    for (const p of allParagraphs) {
+                        if (p.textContent.includes('Affected Sectors:')) {
+                            sectorsElement = p;
+                            break;
+                        }
+                    }
+                    
+                    // If no sectors element found, create one
+                    if (!sectorsElement || !sectorsElement.textContent.includes('Affected Sectors:')) {
+                        sectorsElement = document.createElement('p');
+                        const eventInfo = document.querySelector('#event-info');
+                        const dateElement = document.querySelector('#event-info .event-date');
+                        eventInfo.insertBefore(sectorsElement, dateElement.nextSibling);
+                    }
+                    
+                    let sectors = Array.isArray(data.affected_sectors) 
+                        ? data.affected_sectors.join(', ') 
+                        : data.affected_sectors;
+                        
+                    sectorsElement.innerHTML = `<strong>Affected Sectors:</strong> ${sectors}`;
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching event information:", error);
+                
+                // Fallback to hardcoded March 13 date if API fails
+                const currentDate = new Date(2025, 2, 13); // Month is 0-based, so 2 = March
+                const formattedDate = currentDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                // Update the event info with fallback data
+                const eventDateElement = document.querySelector('#event-info .event-date');
+                if (eventDateElement) {
+                    eventDateElement.innerHTML = `<strong>Date:</strong> ${formattedDate}`;
+                }
+                
+                // Update the event title with fallback data
+                const eventTitleElement = document.querySelector('#event-info h3');
+                if (eventTitleElement) {
+                    eventTitleElement.textContent = "New 25% Tariff on Canadian Lumber (March 13 Update)";
+                }
+            });
+    }
+    
+    // Update impact metrics
+    function updateImpactMetrics() {
+        console.log("Updating impact metrics for event:", currentState.eventId);
+        
+        // Show loading state
+        document.querySelector('#overall-effect .metric-value').textContent = "Loading...";
+        document.querySelector('#most-affected .metric-value').textContent = "Loading...";
+        document.querySelector('#least-affected .metric-value').textContent = "Loading...";
+        
+        // Remove any previous classes
+        document.getElementById('overall-effect').classList.remove('negative', 'positive', 'neutral');
+        
+        // Fetch from API
+        fetch(`${API_BASE_URL}/event-summary?event_id=${currentState.eventId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Event summary API returned ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Received impact metrics:", data);
+                
+                // Update overall effect
+                if (data.overallEffect !== undefined) {
+                    document.querySelector('#overall-effect .metric-value').textContent = 
+                        `${data.overallEffect.toFixed(2)}%`;
+                    
+                    // Add class based on value
+                    if (data.overallEffect < -1) {
+                        document.getElementById('overall-effect').classList.add('negative');
+                    } else if (data.overallEffect > 1) {
+                        document.getElementById('overall-effect').classList.add('positive');
+                    } else {
+                        document.getElementById('overall-effect').classList.add('neutral');
+                    }
+                }
+                
+                // Update most affected
+                if (data.mostAffected) {
+                    document.querySelector('#most-affected .metric-value').textContent = data.mostAffected;
+                }
+                
+                // Update least affected
+                if (data.leastAffected) {
+                    document.querySelector('#least-affected .metric-value').textContent = data.leastAffected;
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching impact metrics:", error);
+                
+                // Use fallback values
+                document.querySelector('#overall-effect .metric-value').textContent = "-9.36%";
+                document.querySelector('#most-affected .metric-value').textContent = "WY: -13.55%";
+                document.querySelector('#least-affected .metric-value').textContent = "WFG: -2.68%";
+                document.getElementById('overall-effect').classList.add('negative');
+            });
+    }
+    // Chart creation functions
+    function createPriceChart() {
+        console.log("Creating price chart from API data");
+        
+        const container = d3.select('#price-chart');
+        if (!container.node()) {
+            console.error("Price chart container not found");
+            return;
+        }
+        
+        // Clear existing content
+        container.html("");
+        
+        // Check if we have data
+        if (!dataCache.priceData || !dataCache.priceData.series || dataCache.priceData.series.length === 0) {
+            container.html("<div class='no-data-message'>No price data available</div>");
+            return;
+        }
+        
+        const data = dataCache.priceData;
+        console.log("Using price data:", data);
+        
+        // Set up chart dimensions
+        const margin = {top: 40, right: 140, bottom: 60, left: 60};
+        const width = container.node().clientWidth - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+        
+        // Create SVG
+        const svg = container.append('svg')
+            .attr('width', width + margin.left + margin.right)
+            .attr('height', height + margin.top + margin.bottom)
+            .append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+        
+        // Parse dates
+        const parseDate = d3.timeParse("%Y-%m-%d");
+        
+        // Get event date
+        const eventDate = parseDate(data.eventDate || TARIFF_DATE);
+        
+        // Create scales
+        const x = d3.scaleTime()
+            .domain(d3.extent(data.dates.map(d => parseDate(d))))
+            .range([0, width]);
+            
+        // Find min and max prices across all series
+        let minPrice = Infinity;
+        let maxPrice = -Infinity;
+        
+        data.series.forEach(series => {
+            series.data.forEach(point => {
+                const price = point.normalized_price || point.price;
+                if (price < minPrice) minPrice = price;
+                if (price > maxPrice) maxPrice = price;
+            });
+        });
+        
+        // Add a small buffer to min/max
+        minPrice = minPrice * 0.98;
+        maxPrice = maxPrice * 1.02;
+        
+        const y = d3.scaleLinear()
+            .domain([minPrice, maxPrice])
+            .range([height, 0]);
+        
+        // Add grid lines
+        svg.append('g')
+            .attr('class', 'grid')
+            .selectAll('line')
+            .data(y.ticks(5))
+            .enter()
+            .append('line')
+            .attr('x1', 0)
+            .attr('x2', width)
+            .attr('y1', d => y(d))
+            .attr('y2', d => y(d))
+            .attr('stroke', '#e0e0e0')
+            .attr('stroke-dasharray', '3,3');
+        
+        // Add x-axis
+        svg.append("g")
+            .attr("class", "x axis")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x).ticks(7).tickFormat(d3.timeFormat("%b %d")));
+        
+        // Add y-axis
+        svg.append("g")
+            .attr("class", "y axis")
+            .call(d3.axisLeft(y).ticks(5));
+        
+        // Add y-axis label
+        svg.append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("y", -40)
+            .attr("x", -height / 2)
+            .attr("text-anchor", "middle")
+            .text("Normalized Price (Base = 100)");
+        
+        // Create line generator
+        const line = d3.line()
+            .x(d => x(parseDate(d.date)))
+            .y(d => y(d.normalized_price || d.price))
+            .curve(d3.curveMonotoneX);
+        
+        // Draw lines for each company
+        data.series.forEach(series => {
+            const companyInfo = data.companies.find(c => c.symbol === series.symbol);
+            
+            svg.append("path")
+                .datum(series.data)
+                .attr("class", `line ${companyInfo.sector} ${series.symbol}`)
+                .attr("fill", "none")
+                .attr("stroke", companyInfo.color)
+                .attr("stroke-width", 2)
+                .attr("d", line);
+        });
+        
+        // Add tariff date line
+        svg.append("line")
+            .attr("class", "tariff-line")
+            .attr("x1", x(parseDate(TARIFF_DATE)))
+            .attr("x2", x(parseDate(TARIFF_DATE)))
+            .attr("y1", 0)
+            .attr("y2", height)
+            .attr("stroke", "blue")
+            .attr("stroke-width", 2)
+            .attr("stroke-dasharray", "5,5");
+        
+        // Add tariff date label
+        svg.append("text")
+            .attr("x", x(parseDate(TARIFF_DATE)) + 5)
+            .attr("y", 15)
+            .attr("fill", "blue")
+            .style("font-weight", "bold")
+            .text("Tariff Implemented");
+        
+        // Group companies by sector for legend
+        const sectorMap = {};
+        data.companies.forEach(company => {
+            if (!sectorMap[company.sector]) {
+                sectorMap[company.sector] = [];
+            }
+            sectorMap[company.sector].push(company);
+        });
+        
+        // Add legend with sector grouping
+        const legend = svg.append("g")
+            .attr("transform", `translate(${width + 5}, 0)`);
+        
+        let yOffset = 0;
+        Object.entries(sectorMap).forEach(([sector, companies]) => {
+            // Add sector header
+            legend.append("text")
+                .attr("x", 0)
+                .attr("y", yOffset)
+                .attr("font-weight", "bold")
+                .style("font-size", "12px")
+                .text(sector.replace("_", " "));
+            
+            yOffset += 15;
+            
+            // Add companies in this sector
+            companies.forEach(company => {
+                const legendItem = legend.append("g")
+                    .attr("transform", `translate(10, ${yOffset})`);
+                
+                legendItem.append("line")
+                    .attr("x1", 0)
+                    .attr("x2", 20)
+                    .attr("y1", 0)
+                    .attr("y2", 0)
+                    .attr("stroke", company.color)
+                    .attr("stroke-width", 2);
+                
+                legendItem.append("text")
+                    .attr("x", 25)
+                    .attr("y", 4)
+                    .text(company.symbol)
+                    .style("font-size", "10px");
+                
+                yOffset += 12;
+            });
+            
+            yOffset += 5; // Add space between sectors
+        });
+        
+        // Add interactive hover
+        const tooltip = d3.select("body").append("div")
+            .attr("class", "tooltip")
+            .style("opacity", 0)
+            .style("position", "absolute")
+            .style("background", "white")
+            .style("padding", "10px")
+            .style("border", "1px solid #ddd")
+            .style("border-radius", "4px")
+            .style("pointer-events", "none")
+            .style("z-index", "1000");
+        
+        // Add hover line
+        const hoverLine = svg.append("line")
+            .attr("class", "hover-line")
+            .attr("y1", 0)
+            .attr("y2", height)
+            .attr("stroke", "#999")
+            .attr("stroke-width", 1)
+            .attr("stroke-dasharray", "5,5")
+            .style("opacity", 0);
+        
+        // Add overlay for mouse tracking
+        svg.append("rect")
+            .attr("class", "overlay")
+            .attr("width", width)
+            .attr("height", height)
+            .style("fill", "none")
+            .style("pointer-events", "all")
+            .on("mousemove", function(event) {
+                const [mouseX] = d3.pointer(event);
+                const date = x.invert(mouseX);
+                
+                // Find closest date in data
+                const bisectDate = d3.bisector(d => parseDate(d)).left;
+                const index = bisectDate(data.dates, date);
+                const closestDate = data.dates[index];
+                
+                if (closestDate) {
+                    // Update hover line
+                    hoverLine
+                        .attr("x1", x(parseDate(closestDate)))
+                        .attr("x2", x(parseDate(closestDate)))
+                        .style("opacity", 1);
+                    
+                    // Create tooltip content
+                    let tooltipContent = `<strong>${closestDate}</strong><br>`;
+                    
+                    data.series.forEach(series => {
+                        const point = series.data.find(d => d.date === closestDate);
+                        if (point) {
+                            const company = data.companies.find(c => c.symbol === series.symbol);
+                            tooltipContent += `<span style="color:${company.color}">${series.symbol}</span>: ${(point.normalized_price || point.price).toFixed(2)}`;
+                            if (point.percentChange) {
+                                tooltipContent += ` (${point.percentChange.toFixed(2)}%)`;
+                            }
+                            tooltipContent += '<br>';
+                        }
+                    });
+                    
+                    // Show tooltip
+                    tooltip
+                        .html(tooltipContent)
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 30) + "px")
+                        .style("opacity", 1);
+                }
+            })
+            .on("mouseout", function() {
+                hoverLine.style("opacity", 0);
+                tooltip.style("opacity", 0);
+            });
+    }
+    
+    // Helper functions for loading states
+    function showLoading() {
+        console.log("Showing loading state");
+        
+        const containers = ['price-chart', 'impact-chart', 'volume-chart', 'impact-heatmap'];
+        
+        containers.forEach(id => {
+            const container = document.getElementById(id);
+            if (container) {
+                container.innerHTML = `
+                    <div class="loading-indicator">
+                        <div class="spinner"></div>
+                        <p>Loading data...</p>
+                    </div>
+                `;
+            }
+        });
+    }
+    
+    function hideLoading() {
+        console.log("Hiding loading state");
+        const loadingIndicators = document.querySelectorAll('.loading-indicator');
+        loadingIndicators.forEach(indicator => {
+            indicator.remove();
+        });
+    }
+    
+    function showError(message, containerId = null) {
+        console.error("Error:", message);
+        
+        if (containerId) {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = `<div class="error-message">${message}</div>`;
+            }
+        } else {
+            const containers = ['price-chart', 'impact-chart', 'volume-chart', 'impact-heatmap'];
+            containers.forEach(id => {
+                const container = document.getElementById(id);
+                if (container) {
+                    container.innerHTML += `<div class="error-badge">${message}</div>`;
+                }
+            });
+        }
+    }
+    
+    // Additional chart creation functions would go here...
+    // createImpactChart(), createVolumeChart(), createHeatmap() functions
+    function createImpactChart() {
+        console.log("Creating impact chart from API data");
+        
+        const container = d3.select('#impact-chart');
+        if (!container.node()) {
+            console.error("Impact chart container not found");
+            return;
+        }
+        
+        // Clear existing content
+        container.html("");
+        
+        // Check if we have data
+        if (!dataCache.impactData || dataCache.impactData.length === 0) {
+            container.html("<div class='no-data-message'>No impact data available</div>");
+            return;
+        }
+        
+        // FIXED: Apply sector filtering to the impact data
+        let data = dataCache.impactData;
+        console.log("Raw impact data:", data);
+        
+        // Filter by the current sector selection if not 'all'
+        if (currentState.sector !== 'all') {
+            data = data.filter(d => d.sector === currentState.sector);
+            console.log("Filtered impact data for sector:", currentState.sector, data);
+        }
+        
+        // If we have no data after filtering, show message
+        if (data.length === 0) {
+            container.html(`<div class='no-data-message'>No impact data available for sector: ${currentState.sector}</div>`);
+            return;
+        }
+        
+        // Sort by impact
+        data.sort((a, b) => a.impact - b.impact);
+        
+        // Set up chart dimensions
+        const margin = {top: 30, right: 20, bottom: 40, left: 100};
+        const width = container.node().clientWidth - margin.left - margin.right;
+        const height = 300 - margin.top - margin.bottom;
+        
+        // Create SVG
+        const svg = container.append('svg')
+            .attr('width', width + margin.left + margin.right)
+            .attr('height', height + margin.top + margin.bottom)
+            .append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+        
+        // Create scales
+        const x = d3.scaleLinear()
+            .domain([
+            Math.min(d3.min(data, d => d.impact), 0) * 1.1, 
+            Math.max(d3.max(data, d => d.impact), 0) * 1.1
+            ])
+            .range([0, width]);
+            
+        const y = d3.scaleBand()
+            .domain(data.map(d => d.symbol))
+            .range([0, height])
+            .padding(0.2);
+        
+        // Add x-axis
+        svg.append("g")
+            .attr("class", "x axis")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x).ticks(5).tickFormat(d => `${d.toFixed(1)}%`));
+        
+        // Add y-axis
+        svg.append("g")
+            .attr("class", "y axis")
+            .call(d3.axisLeft(y));
+        
+        // Determine colors based on sector
+        function getColorForSector(sector) {
+            if (sector && sector.toLowerCase().includes('lumber_companies')) return "#e74c3c";
+            if (sector && sector.toLowerCase().includes('lumber_etfs')) return "#e67e22";
+            if (sector && sector.toLowerCase().includes('agriculture')) return "#f39c12";
+            return "#3498db";
+        }
+        
+        // Add bars
+        svg.selectAll(".bar")
+            .data(data)
+            .enter()
+            .append("rect")
+            .attr("class", "bar")
+            .attr("x", d => d.impact < 0 ? x(d.impact) : x(0))
+            .attr("y", d => y(d.symbol))
+            .attr("width", d => Math.abs(x(d.impact) - x(0)))
+            .attr("height", y.bandwidth())
+            .attr("fill", d => getColorForSector(d.sector))
+            .style("cursor", "pointer")
+            .on("mouseover", function(event, d) {
+            // Highlight bar
+            d3.select(this)
+                .transition()
+                .duration(200)
+                .attr("opacity", 0.7)
+                .attr("stroke", "#000")
+                .attr("stroke-width", 2);
+            
+            // Show tooltip
+            const tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0)
+                .style("position", "absolute")
+                .style("background", "white")
+                .style("padding", "10px")
+                .style("border", "1px solid #ddd")
+                .style("border-radius", "4px")
+                .style("z-index", "1000");
+            
+            tooltip.transition()
+                .duration(200)
+                .style("opacity", 0.9);
+            
+            tooltip.html(`
+                <strong>${d.name || d.symbol}</strong><br>
+                Impact: ${d.impact.toFixed(2)}%<br>
+                Sector: ${d.sector}
+            `)
+                .style("left", (event.pageX + 15) + "px")
+                .style("top", (event.pageY - 28) + "px");
+            })
+            .on("mouseout", function() {
+            // Reset bar
+            d3.select(this)
+                .transition()
+                .duration(200)
+                .attr("opacity", 1)
+                .attr("stroke", "none");
+            
+            // Remove tooltip
+            d3.selectAll(".tooltip").remove();
+            });
+        
+        // Add zero line
+        svg.append("line")
+            .attr("x1", x(0))
+            .attr("x2", x(0))
+            .attr("y1", 0)
+            .attr("y2", height)
+            .attr("stroke", "#666")
+            .attr("stroke-width", 1)
+            .attr("stroke-dasharray", "3,3");
+        
+        // Add labels
+        svg.selectAll(".label")
+            .data(data)
+            .enter()
+            .append("text")
+            .attr("class", "label")
+            .attr("x", d => d.impact < 0 ? x(d.impact) - 5 : x(d.impact) + 5)
+            .attr("y", d => y(d.symbol) + y.bandwidth() / 2)
+            .attr("dy", "0.35em")
+            .attr("text-anchor", d => d.impact < 0 ? "end" : "start")
+            .attr("fill", d => d.impact < 0 ? "#fff" : "#000")
+            .text(d => `${d.impact.toFixed(1)}%`);
+        
+        // Add title
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", -10)
+            .attr("text-anchor", "middle")
+            .style("font-size", "14px")
+            .text(`Impact on ${currentState.sector === 'all' ? 'All Sectors' : currentState.sector.replace('_', ' ')}`);
+    }
+    //Other additonal functions add here
+
+    function createVolumeChart() {
+        console.log("Creating volume chart from API data");
+        
+        const container = d3.select('#volume-chart');
+        if (!container.node()) {
+            console.error("Volume chart container not found");
+            return;
+        }
+        
+        // Clear existing content
+        container.html("");
+        
+        // Check if we have data
+        if (!dataCache.volumeData || !dataCache.volumeData.series || dataCache.volumeData.series.length === 0) {
+            container.html("<div class='no-data-message'>No volume data available</div>");
+            return;
+        }
+        
+        const data = dataCache.volumeData;
+        console.log("Using volume data:", data);
+        
+        // Set up chart dimensions
+        const margin = {top: 40, right: 20, bottom: 60, left: 60};
+        const width = container.node().clientWidth - margin.left - margin.right;
+        const height = 300 - margin.top - margin.bottom;
+        
+    // Create SVG
+    const svg = container.append('svg')
+            .attr('width', width + margin.left + margin.right)
+            .attr('height', height + margin.top + margin.bottom)
+            .append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+        
+        // Parse dates
+        const parseDate = d3.timeParse("%Y-%m-%d");
+        
+        // Define tariff date
+        const tariffDate = parseDate(TARIFF_DATE);
+        
+        // Create scales
+        const x = d3.scaleTime()
+            .domain(d3.extent(data.dates.map(d => parseDate(d))))
+            .range([0, width]);
+            
+        // Find max volume across all series
+        let maxVolume = 0;
+        data.series.forEach(series => {
+            series.data.forEach(point => {
+                if (point.volume > maxVolume) maxVolume = point.volume;
+            });
+        });
+        
+        const y = d3.scaleLinear()
+            .domain([0, maxVolume * 1.1])
+            .range([height, 0]);
+        
+        // Add grid lines
+        svg.append("g")
+            .attr("class", "grid-lines")
+            .selectAll("line")
+            .data(y.ticks(5))
+            .enter()
+            .append("line")
+            .attr("x1", 0)
+            .attr("x2", width)
+            .attr("y1", d => y(d))
+            .attr("y2", d => y(d))
+            .attr("stroke", "#e0e0e0")
+            .attr("stroke-dasharray", "3,3");
+        
+        // Add x-axis
+        svg.append("g")
+            .attr("class", "x axis")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat("%b %d")));
+        
+        // Add y-axis
+        svg.append("g")
+            .attr("class", "y axis")
+            .call(d3.axisLeft(y).ticks(5).tickFormat(d => {
+                return d >= 1000000 ? d3.format(",.1f")(d / 1000000) + "M" : d3.format(",.0f")(d);
+            }));
+        
+        // Add y-axis label
+        svg.append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("y", -margin.left + 20)
+            .attr("x", -height / 2)
+            .attr("text-anchor", "middle")
+            .text("Trading Volume");
+        
+        // Use only the first series for display clarity if there are multiple
+        const mainSeries = data.series[0];
+        const mainCompany = data.companies.find(c => c.symbol === mainSeries.symbol);
+        
+        // Add bars
+        svg.selectAll(".volume-bar")
+            .data(mainSeries.data)
+            .enter()
+            .append("rect")
+            .attr("class", "volume-bar")
+            .attr("x", d => x(parseDate(d.date)) - width / (data.dates.length * 2) + 1)
+            .attr("y", d => y(d.volume))
+            .attr("width", width / data.dates.length - 2)
+            .attr("height", d => height - y(d.volume))
+            .attr("fill", mainCompany.color || "#3498db")
+            .attr("opacity", 0.7)
+            .on("mouseover", function(event, d) {
+                // Highlight bar
+                d3.select(this)
+                    .attr("opacity", 1);
+                
+                // Show tooltip
+                const tooltip = d3.select("body").append("div")
+                    .attr("class", "tooltip")
+                    .style("opacity", 0)
+                    .style("position", "absolute")
+                    .style("background", "white")
+                    .style("padding", "10px")
+                    .style("border", "1px solid #ddd")
+                    .style("border-radius", "4px")
+                    .style("z-index", "1000");
+                
+                tooltip.transition()
+                    .duration(200)
+                    .style("opacity", 0.9);
+                
+                tooltip.html(`
+                    <strong>${mainCompany.name || mainCompany.symbol}</strong><br>
+                    Date: ${d.date}<br>
+                    Volume: ${d3.format(",")(d.volume)}<br>
+                    Day from Event: ${d.day || 0}
+                `)
+                    .style("left", (event.pageX + 15) + "px")
+                    .style("top", (event.pageY - 28) + "px");
+            })
+            .on("mouseout", function() {
+                // Reset bar
+                d3.select(this)
+                    .attr("opacity", 0.7);
+                
+                // Remove tooltip
+                d3.selectAll(".tooltip").remove();
+            });
+        
+        // Add tariff date line
+        svg.append("line")
+            .attr("class", "tariff-line")
+            .attr("x1", x(tariffDate))
+            .attr("x2", x(tariffDate))
+            .attr("y1", 0)
+            .attr("y2", height)
+            .attr("stroke", "blue")
+            .attr("stroke-width", 2)
+            .attr("stroke-dasharray", "5,5");
+        
+        // Add tariff date label
+        svg.append("text")
+            .attr("x", x(tariffDate) + 5)
+            .attr("y", 15)
+            .attr("fill", "blue")
+            .style("font-weight", "bold")
+            .text("Tariff Implemented");
+        
+        // Add title
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", -15)
+            .attr("text-anchor", "middle")
+            .style("font-size", "14px")
+            .text(`${mainCompany.symbol} Trading Volume`);
+    }
+    // Add aditonal functions below here:
+    function createHeatmap() {
+        console.log("Creating heatmap from API data");
+        
+        const container = d3.select('#impact-heatmap');
+        if (!container.node()) {
+            console.error("Heatmap container not found");
+            return;
+        }
+        
+        // Clear existing content
+        container.html("");
+        
+        // Check if we have data
+        if (!dataCache.heatmapData || !dataCache.heatmapData.data || dataCache.heatmapData.data.length === 0) {
+            container.html("<div class='no-data-message'>No heatmap data available</div>");
+            return;
+        }
+        
+        const data = dataCache.heatmapData;
+        console.log("Using heatmap data:", data);
+        
+        // Set up chart dimensions
+        const margin = {top: 40, right: 20, bottom: 60, left: 150};
+        const width = container.node().clientWidth - margin.left - margin.right;
+        const height = 200 - margin.top - margin.bottom;
+        
+        // Create SVG
+        const svg = container.append('svg')
+            .attr('width', width + margin.left + margin.right)
+            .attr('height', height + margin.top + margin.bottom)
+            .append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+        
+        // Create scales
+        const x = d3.scaleBand()
+            .domain(data.dates)
+            .range([0, width])
+            .padding(0.01);
+            
+        const y = d3.scaleBand()
+            .domain(data.sectors)
+            .range([0, height])
+            .padding(0.1);
+            
+        const color = d3.scaleSequential()
+            .domain([-15, 15])
+            .interpolator(d3.interpolateRdBu);
+        
+        // Add x-axis
+        svg.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x).tickFormat(d => {
+                const date = new Date(d);
+                return date.getDate(); // Just show day number for compactness
+            }));
+        
+        // Add month on x-axis
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", height + 30)
+            .attr("text-anchor", "middle")
+            .text("March 2025");
+        
+        // Add y-axis with better labels
+        svg.append("g")
+            .call(d3.axisLeft(y).tickFormat(d => {
+                return d.replace('_', ' ');
+            }));
+        
+        // Create heatmap cells
+        svg.selectAll(".heatmap-cell")
+            .data(data.data)
+            .enter()
+            .append("rect")
+            .attr("x", d => {
+                const xPos = x(d.date);
+                if (xPos === undefined) {
+                    console.error(`Undefined x position for date: ${d.date}`);
+                    return 0;
+                }
+                return xPos;
+            })
+            .attr("y", d => {
+                const yPos = y(d.sector);
+                if (yPos === undefined) {
+                    console.error(`Undefined y position for sector: ${d.sector}`);
+                    return 0;
+                }
+                return yPos;
+            })
+            .attr("width", x.bandwidth())
+            .attr("height", y.bandwidth())
+            .attr("fill", d => color(d.value))
+            .attr("stroke", "white")
+            .attr("stroke-width", 1)
+            .on("mouseover", function(event, d) {
+                // Highlight cell
+                d3.select(this)
+                    .attr("stroke", "#333")
+                    .attr("stroke-width", 2);
+                
+                // Add tooltip
+                const tooltip = d3.select("body").append("div")
+                    .attr("class", "tooltip")
+                    .style("opacity", 0)
+                    .style("position", "absolute")
+                    .style("background-color", "white")
+                    .style("padding", "8px")
+                    .style("border-radius", "4px")
+                    .style("border", "1px solid #ddd")
+                    .style("pointer-events", "none")
+                    .style("z-index", "1000");
+                
+                tooltip.transition().duration(200).style("opacity", 0.9);
+                
+                const dateObj = new Date(d.date);
+                const formatDate = d3.timeFormat("%b %d, %Y");
+                
+                tooltip.html(`
+                    <strong>${d.sector.replace('_', ' ')}</strong><br>
+                    Date: ${formatDate(dateObj)}<br>
+                    Change: ${d.value.toFixed(2)}%<br>
+                    Day from Event: ${d.day || 0}
+                `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 15) + "px");
+            })
+            .on("mouseout", function() {
+                // Reset cell
+                d3.select(this)
+                    .attr("stroke", "white")
+                    .attr("stroke-width", 1);
+                
+                // Remove tooltip
+                d3.selectAll(".tooltip").remove();
+            });
+        
+        // Add tariff date line
+        if (data.dates.includes(TARIFF_DATE)) {
+            const tariffX = x(TARIFF_DATE) + x.bandwidth() / 2;
+            
+            svg.append("line")
+                .attr("class", "tariff-line")
+                .attr("x1", tariffX)
+                .attr("x2", tariffX)
+                .attr("y1", -10)
+                .attr("y2", height)
+                .attr("stroke", "blue")
+                .attr("stroke-width", 2)
+                .attr("stroke-dasharray", "5,5");
+            
+            svg.append("text")
+                .attr("x", tariffX)
+                .attr("y", -15)
+                .attr("text-anchor", "middle")
+                .attr("fill", "blue")
+                .style("font-weight", "bold")
+                .style("font-size", "10px")
+                .text("Tariff Date");
+        } else {
+            // If tariff date not in dataset, calculate position
+            console.log("Tariff date not found in heatmap data, calculating position");
+            
+            // Parse all dates
+            const dateObjects = data.dates.map(d => new Date(d));
+            const minDate = new Date(Math.min.apply(null, dateObjects));
+            const maxDate = new Date(Math.max.apply(null, dateObjects));
+            const tariffDateTime = new Date(TARIFF_DATE).getTime();
+            
+            // If tariff date is within range, calculate position
+            if (tariffDateTime >= minDate.getTime() && tariffDateTime <= maxDate.getTime()) {
+                const dateRange = maxDate.getTime() - minDate.getTime();
+                const tariffPosition = (tariffDateTime - minDate.getTime()) / dateRange;
+                const xPos = tariffPosition * width;
+                
+                svg.append('line')
+                    .attr('class', 'tariff-line')
+                    .attr('x1', xPos)
+                    .attr('x2', xPos)
+                    .attr('y1', -10)
+                    .attr('y2', height)
+                    .attr('stroke', 'blue')
+                    .attr('stroke-width', 2)
+                    .attr('stroke-dasharray', '5,5');
+                
+                svg.append('text')
+                    .attr('x', xPos)
+                    .attr('y', -15)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', 'blue')
+                    .style('font-weight', 'bold')
+                    .style('font-size', '10px')
+                    .text('Tariff Date');
+            }
+        }
+        
+        // Add color legend
+        const legendWidth = 200;
+        const legendHeight = 15;
+        const legendX = width - legendWidth;
+        const legendY = height + 40;
+        
+        // Create gradient
+        const defs = svg.append("defs");
+        const gradient = defs.append("linearGradient")
+            .attr("id", "heatmap-gradient")
+            .attr("x1", "0%")
+            .attr("y1", "0%")
+            .attr("x2", "100%")
+            .attr("y2", "0%");
+        
+        gradient.append("stop")
+            .attr("offset", "0%")
+            .attr("stop-color", color(-15));
+        
+        gradient.append("stop")
+            .attr("offset", "50%")
+            .attr("stop-color", color(0));
+        
+        gradient.append("stop")
+            .attr("offset", "100%")
+            .attr("stop-color", color(15));
+        
+        // Add gradient rect
+        svg.append("rect")
+            .attr("x", legendX)
+            .attr("y", legendY)
+            .attr("width", legendWidth)
+            .attr("height", legendHeight)
+            .style("fill", "url(#heatmap-gradient)");
+        
+        // Add legend scale
+        const legendScale = d3.scaleLinear()
+            .domain([-15, 15])
+            .range([0, legendWidth]);
+        
+        const legendAxis = d3.axisBottom(legendScale)
+            .tickValues([-15, -10, -5, 0, 5, 10, 15])
+            .tickFormat(d => d + '%');
+        
+        svg.append("g")
+            .attr("transform", `translate(${legendX}, ${legendY + legendHeight})`)
+            .call(legendAxis);
+        
+        // Add legend title
+        svg.append("text")
+            .attr("x", legendX + legendWidth / 2)
+            .attr("y", legendY - 5)
+            .attr("text-anchor", "middle")
+            .style("font-size", "10px")
+            .text("Percent Change");
+    }
+    // and other fallback data functions are omitted for brevity
+    
+    </script>
+</body>
+</html>
