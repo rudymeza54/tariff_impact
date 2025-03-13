@@ -9,11 +9,11 @@ click==8.1.7
 gunicorn==21.2.0
 flask-cors==4.0.0
 
-# Database (uncomment based on your database choice)
-# SQLAlchemy==2.0.22
-# psycopg2-binary==2.9.9  # For PostgreSQL
-# pymysql==1.1.0  # For MySQL
-# flask-sqlalchemy==3.1.1
+# Add these to your requirements.txt file
+pandas==2.2.0
+numpy==1.26.3
+SQLAlchemy==2.0.27
+psycopg2-binary==2.9.9  # For PostgreSQL connection
 
 # JSON handling
 marshmallow==3.20.1
@@ -27,3 +27,4 @@ pytz==2023.3
 # pytest==7.4.2
 # black==23.9.1
 # flake8==6.1.0
+
