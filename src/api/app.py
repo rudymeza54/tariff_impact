@@ -22,7 +22,7 @@ def get_db_connection():
     db_user = os.environ.get('DB_USER', 'postgres')
     db_pass = os.environ.get('DB_PASSWORD', 'mysecretpassword')
     db_name = os.environ.get('DB_NAME', 'postgres')
-    db_port = os.environ.get('DB_PORT', '5431')
+    db_port = os.environ.get('DB_PORT', '5432')
     
     connection_string = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
     logger.info(f"Attempting to connect with: {connection_string.replace(db_pass, '******')}")

@@ -99,18 +99,33 @@ def push_data_to_render():
     try:
         print("Pushing data to Render PostgreSQL database using SQLAlchemy...")
         
-        # Local DB connection
+        # Local DB connection with improved connection parameters
         local_conn_str = "postgresql://postgres:mysecretpassword@localhost:5431/postgres"
-        local_engine = sqlalchemy.create_engine(local_conn_str)
+        local_engine = sqlalchemy.create_engine(
+            local_conn_str,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_recycle=1800,
+            connect_args={"connect_timeout": 10}
+        )
         
-        # Render DB connection - use the external URL
-        render_conn_str = "postgresql://tariff_db_mwke_user:OgyMpx6azihJIqRknrWlOmLkEbgiuj13@dpg-cv9l4g3tq21c73blj9ug-a.oregon-postgres.render.com/tariff_db_mwke"
-        render_engine = sqlalchemy.create_engine(render_conn_str)
+        # Render DB connection with improved connection parameters - UPDATED PORT TO 5432
+        render_conn_str = "postgresql://tariff_db_mwke_user:OgyMpx6azihJIqRknrWlOmLkEbgiuj13@dpg-cv9l4g3tq21c73blj9ug-a.oregon-postgres.render.com:5432/tariff_db_mwke"
+        render_engine = sqlalchemy.create_engine(
+            render_conn_str,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_recycle=1800,
+            connect_args={"connect_timeout": 10}
+        )
         
-        # Check both connections
+        # Check both connections with proper resource cleanup
         try:
             with local_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
+                # Connection automatically closed when exiting the with block
             print("Successfully connected to local database")
         except Exception as e:
             print(f"Error connecting to local database: {str(e)}")
@@ -119,6 +134,7 @@ def push_data_to_render():
         try:
             with render_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
+                # Connection automatically closed when exiting the with block
             print("Successfully connected to Render database")
         except Exception as e:
             print(f"Error connecting to Render database: {str(e)}")
@@ -131,12 +147,14 @@ def push_data_to_render():
             print(f"Transferring table: {table}")
             
             # First check if table exists in local database
+            table_exists = False
             try:
                 with local_engine.connect() as conn:
                     check_table = text(f"SELECT to_regclass('{table}')")
                     result = conn.execute(check_table).scalar()
+                    table_exists = result is not None
                     
-                if result is None:
+                if not table_exists:
                     print(f"Table {table} does not exist in local database. Skipping.")
                     continue
             except Exception as e:
@@ -160,16 +178,25 @@ def push_data_to_render():
                 except Exception as e:
                     print(f"Error managing sequence: {str(e)}")
             
-            # Get schema from local database
-            with local_engine.connect() as conn:
-                schema_query = text(f"""
-                SELECT column_name, data_type, 
-                       character_maximum_length, column_default, is_nullable
-                FROM information_schema.columns 
-                WHERE table_name = '{table}'
-                ORDER BY ordinal_position
-                """)
-                schema = pd.read_sql(schema_query, conn)
+            # Get schema from local database - using with statement for connection cleanup
+            schema = None
+            try:
+                with local_engine.connect() as conn:
+                    schema_query = text(f"""
+                    SELECT column_name, data_type, 
+                           character_maximum_length, column_default, is_nullable
+                    FROM information_schema.columns 
+                    WHERE table_name = '{table}'
+                    ORDER BY ordinal_position
+                    """)
+                    schema = pd.read_sql(schema_query, conn)
+            except Exception as e:
+                print(f"Error getting schema for {table}: {str(e)}")
+                continue
+                
+            if schema is None or schema.empty:
+                print(f"Could not retrieve schema for {table}. Skipping.")
+                continue
             
             # Create table in Render if it doesn't exist
             columns = []
@@ -201,11 +228,13 @@ def push_data_to_render():
             
             create_table_sql = f"CREATE TABLE IF NOT EXISTS {table} ({', '.join(columns)})"
             
+            table_created = False
             try:
                 with render_engine.connect() as conn:
                     conn.execute(text(create_table_sql))
                     conn.commit()
                 print(f"Created or verified table {table} in Render database")
+                table_created = True
             except Exception as e:
                 print(f"Error creating table {table} in Render database: {str(e)}")
                 print(f"SQL was: {create_table_sql}")
@@ -231,37 +260,77 @@ def push_data_to_render():
                             conn.execute(alt_create_sql)
                             conn.commit()
                         print("Created tariff_events table with alternative approach")
+                        table_created = True
                     except Exception as e2:
                         print(f"Alternative approach also failed: {str(e2)}")
                         continue
                 else:
                     continue
             
+            if not table_created:
+                print(f"Could not create table {table}. Skipping data transfer.")
+                continue
+                
             # Transfer data in chunks to avoid memory issues
             try:
+                # Get total rows for progress reporting
+                total_rows = 0
                 with local_engine.connect() as conn:
-                    # Get total rows for progress reporting
                     count_query = text(f"SELECT COUNT(*) FROM {table}")
                     total_rows = conn.execute(count_query).scalar()
-                    print(f"Found {total_rows} rows to transfer in {table}")
+                print(f"Found {total_rows} rows to transfer in {table}")
+                
+                # Use smaller chunks and explicitly dispose of DataFrames to manage memory
+                if total_rows > 0:
+                    # Smaller chunk size to reduce memory usage
+                    chunk_size = 1000
                     
-                    # Use pandas to read and write in chunks
-                    if total_rows > 0:
-                        chunk_size = 5000  # Adjust based on table size and memory constraints
-                        for chunk_num, chunk_df in enumerate(pd.read_sql_table(table, local_engine, chunksize=chunk_size)):
-                            start_row = chunk_num * chunk_size
-                            end_row = min((chunk_num + 1) * chunk_size, total_rows)
-                            print(f"Transferring rows {start_row} to {end_row} of {total_rows}...")
-                            
-                            # Determine correct if_exists behavior
-                            if_exists = 'replace' if chunk_num == 0 else 'append'
-                            
-                            # Write to Render
-                            chunk_df.to_sql(table, render_engine, if_exists=if_exists, index=False)
+                    # Clear existing data if we're replacing
+                    with render_engine.connect() as conn:
+                        conn.execute(text(f"DELETE FROM {table}"))
+                        conn.commit()
+                    
+                    # Process in chunks with explicit resource cleanup
+                    offset = 0
+                    while offset < total_rows:
+                        # Use SQL directly to limit memory usage
+                        with local_engine.connect() as conn:
+                            chunk_query = text(f"SELECT * FROM {table} OFFSET {offset} LIMIT {chunk_size}")
+                            chunk_df = pd.read_sql(chunk_query, conn)
                         
-                        print(f"Successfully transferred all {total_rows} rows for {table}")
-                    else:
-                        print(f"No data found in {table}")
+                        print(f"Transferring rows {offset} to {min(offset + chunk_size, total_rows)} of {total_rows}...")
+                        
+                        # Write to Render
+                        with render_engine.connect() as conn:
+                            # Convert DataFrame to list of tuples for more efficient insert
+                            columns = chunk_df.columns.tolist()
+                            tuples = [tuple(x) for x in chunk_df.to_numpy()]
+                            
+                            # Explicitly set statement timeout
+                            conn.execute(text("SET statement_timeout = 30000"))  # 30 seconds
+                            
+                            # Create placeholders for values
+                            placeholders = ', '.join(['%s'] * len(columns))
+                            column_names = ', '.join(columns)
+                            
+                            # Insert data in batches
+                            batch_size = 100
+                            for i in range(0, len(tuples), batch_size):
+                                batch = tuples[i:i+batch_size]
+                                values = ', '.join([str(conn.connection.cursor().mogrify(f"({placeholders})", x).decode('utf-8')) for x in batch])
+                                insert_query = f"INSERT INTO {table} ({column_names}) VALUES {values}"
+                                conn.execute(text(insert_query))
+                            
+                            conn.commit()
+                        
+                        # Increment offset and explicitly clean up DataFrame
+                        offset += chunk_size
+                        del chunk_df
+                        
+                    print(f"Successfully transferred all {total_rows} rows for {table}")
+                else:
+                    print(f"No data found in {table}")
+                    
             except Exception as e:
                 print(f"Error transferring data for {table}: {str(e)}")
                 continue
@@ -272,7 +341,16 @@ def push_data_to_render():
     except Exception as e:
         print(f"Error during data transfer: {str(e)}")
         return False
-    
+    finally:
+        # Ensure engines are properly disposed to release all connections
+        try:
+            if 'local_engine' in locals():
+                local_engine.dispose()
+            if 'render_engine' in locals():
+                render_engine.dispose()
+        except Exception as e:
+            print(f"Error disposing database engines: {str(e)}")
+
 # Main function
 def main():
     # Read input argument
