@@ -13,7 +13,6 @@ The **Tariff Impact Analysis Dashboard** provides an interactive visualization o
 - A **PostgreSQL database** to store processed data.
 - An interactive **D3.js dashboard** for visualizing insights.
 
-Explore the live demo here: 👉 [https://tariffimpact.netlify.app/](https://tariffimpact.netlify.app/)
 
 ---
 
