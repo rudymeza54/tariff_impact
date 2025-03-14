@@ -84,7 +84,7 @@ The following KPIs are tracked and visualized in the D3.js dashboard:
 
 Here’s a preview of the **D3.js Dashboard**:
 
-![Dashboard Preview](visualizations/front_end.png)
+![Dashboard Preview](images/dashboard-preview.png)
 
 *Figure 1: Interactive D3.js dashboard showing tariff impact analysis.*
 
