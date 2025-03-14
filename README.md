@@ -4,39 +4,28 @@ This project is an **ETL pipeline and API dashboard** designed to analyze the im
 
 ---
 
-## Table of Contents
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Installation](#installation)
-- [Usage](#usage)
-- [API Endpoints](#api-endpoints)
-- [Contributing](#contributing)
-- [License](#license)
+## Key Performance Indicators (KPIs)
+
+The following KPIs are tracked and visualized in the D3.js dashboard:
+
+| KPI                          | Description                                      |
+|------------------------------|--------------------------------------------------|
+| **Market Impact Score**       | Measures the overall impact of tariffs on market data. |
+| **Tariff Event Frequency**    | Number of tariff-related events over time.       |
+| **Price Change Percentage**   | Percentage change in market prices due to tariffs.|
+| **Affected Industries**       | Industries most impacted by tariff changes.      |
 
 ---
 
-## Overview
+## JavaScript Code Snippets
 
-The Tariff Impact Analysis API Dashboard provides a comprehensive analysis of how tariffs affect historical market data. It includes:
-- A **Flask-based REST API** to serve tariff impact data.
-- **Python scripts** for fetching and processing market data and tariff events.
-- A **PostgreSQL database** to store processed data.
-- An interactive **D3.js dashboard** for visualizing insights.
+Below are some key JavaScript snippets used in the D3.js dashboard:
 
----
+### 1. Fetching Data from the Flask API
 
-## Architecture
-
-The project consists of the following components:
-
-- **Flask App**: REST API to serve tariff impact data.
-- **Historical Market Python Script**: Fetches and processes market data.
-- **Tariff Event Script**: Collects and processes tariff-related events.
-- **PostgreSQL Database**: Stores market data and tariff event records.
-- **Dockerized PostgreSQL Container**: Deploys the database in a containerized environment.
-- **D3.js Dashboard**: Interactive front-end visualization for tariff analysis.
-
----
-
-## Project Structure
+```javascript
+async function fetchMarketData() {
+    const response = await fetch('/api/market-data');
+    const data = await response.json();
+    return data;
+}
