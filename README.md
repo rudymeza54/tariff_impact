@@ -95,7 +95,7 @@ Here’s a preview of the **D3.js Dashboard**:
 - **Database**: PostgreSQL
 - **Frontend**: D3.js, HTML, CSS, JavaScript
 - **Data Processing**: Python (Pandas, NumPy)
-- **Deployment**: Netlify (Frontend), Heroku/Netlify (Backend)
+- **Deployment**: Netlify (Frontend), Render (Backend)
 - **Containerization**: Docker
 
 ---
